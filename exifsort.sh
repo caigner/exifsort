@@ -84,7 +84,7 @@ if [[ "$1" == "doAction" && "$2" != "" ]]; then
       echo " Using LMDATE: $DATETIME"
     else
       echo " Moving to ./noexif/"
-      mkdir -p "${MOVETO}noexif" && mv -b -f "$2" "${MOVETO}noexif"
+      mkdir -p "${MOVETO}noexif" && mv --backup=numbered "$2" "${MOVETO}noexif"
       exit
     fi;
   else
