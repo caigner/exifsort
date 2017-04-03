@@ -4,16 +4,22 @@
 # The following are the only settings you should need to change:
 #
 # TS_AS_FILENAME: This can help eliminate duplicate images during sorting.
-# TRUE: File will be renamed to the Unix timestamp and its extension.
+# TRUE: File will be renamed to timestamp ( %Y-%m-%d_%H:%M:%S )and its extension.
 # FALSE (any non-TRUE value): Filename is unchanged.
 TS_AS_FILENAME=TRUE
+# 
+# PRESERVE_ORIGINAL_FILENAME: If this is TRUE, the original filename will be added after 
+# the timestamp.
+PRESERVE_ORIGINAL_FILENAME=TRUE
+#
+# DIRFORMAT: Directory name format (as used in the date command) used in the file move 
+DIRFORMAT="+%Y/%m/%Y%m%d"
 #
 # USE_LMDATE: If this is TRUE, images without EXIF data will have their Last Modified file
 # timestamp used as a fallback. If FALSE, images without EXIF data are put in noexif/ for
 # manual sorting.
 # Valid options are "TRUE" or anything else (assumes FALSE). FIXME: Restrict to TRUE/FALSE
-#
-USE_LMDATE=TRUE
+USE_LMDATE=FALSE
 #
 # USE_FILE_EXT: The following option is here as a compatibility option as well as a bugfix.
 # If this is set to TRUE, files are identified using FILE's magic, and the extension
@@ -21,13 +27,11 @@ USE_LMDATE=TRUE
 # CAUTION: If set to TRUE, extensions may be changed to values you do not expect.
 # See the manual page for file(1) to understand how this works.
 # NOTE: This option is only honored if TS_AS_FILENAME is TRUE.
-#
 USE_FILE_EXT=TRUE
 #
 # JPEG_TO_JPG: The following option is here for personal preference. If TRUE, this will
 # cause .jpg to be used instead of .jpeg as the file extension. If FALSE (or any other
 # value) .jpeg is used instead. This is only used if USE_FILE_EXT is TRUE and used.
-#
 JPEG_TO_JPG=TRUE
 #
 #
@@ -45,10 +49,6 @@ FILETYPES=("*.jpg" "*.jpeg" "*.png" "*.tif" "*.tiff" "*.gif" "*.xcf")
 # FIXME: Gracefully handle unavailable destinations, non-trailing slash, etc.
 #
 MOVETO=""
-#
-# Directory name format (as used in the date command) used in the file move 
-#
-DIRFORMAT="+%Y/%m/%Y%m%d/"
 #
 #
 ###############################################################################
@@ -76,7 +76,7 @@ if [[ "$1" == "doAction" && "$2" != "" ]]; then
   DATETIME=`exiftool -createdate "$2" | grep "Create Date" | awk -F' ' '{print $4" "$5}'`
 
   if [[ "$DATETIME" == "" ]]; then
-    echo "not found."
+    echo -n "not found."
     if [[ $USE_LMDATE == "TRUE" ]]; then
       # I am deliberately not using %Y here because of the desire to display the date/time
       # to the user, though I could avoid a lot of post-processing by using it.
@@ -122,7 +122,13 @@ if [[ "$1" == "doAction" && "$2" != "" ]]; then
 #    echo " Will rename to $UDSTAMP.$EXT"
 #    MVCMD="/$UDSTAMP.$EXT"
 
-    MVCMD="/${UFDATE}_${ETIME}.${EXT}"
+    if [ "$PRESERVE_ORIGINAL_FILENAME" == "TRUE" ]; then
+      EXTENSION=${2##*.}
+	  FILENAME=`basename "$2" .$EXTENSION`
+      MVCMD="/${UFDATE}_${ETIME}_$FILENAME.${EXT}"
+	else  
+      MVCMD="/${UFDATE}_${ETIME}.${EXT}"
+    fi;
   fi;
 
   # DIRectory NAME for the file move
@@ -145,26 +151,30 @@ fi;
 # Could probably be optimized into a function instead, but I don't think there's an
 # advantage performance-wise. Suggestions are welcome at the URL at the top.
 for x in "${FILETYPES[@]}"; do
- # Check for the presence of exiftool command.
- # Assuming its valid and working if found.
- I=`which exiftool`
- if [ "$I" == "" ]; then
- echo "The 'exiftool' command is missing or not available."
- echo "Is exiftool installed?"
- exit 1
- fi;
- echo "Scanning for $x..."
- # FIXME: Eliminate problems with unusual characters in filenames.
- # Currently the exec call will fail and they will be skipped.
- find . -iname "$x" -print0 -exec sh -c "$0 doAction '{}'" \;
- echo "... end of $x"
+  # Check for the presence of exiftool command.
+  # Assuming its valid and working if found.
+  I=`which exiftool`
+  if [ "$I" == "" ]; then
+    echo "The 'exiftool' command is missing or not available."
+    echo "Is exiftool installed?"
+    exit 1
+  fi;
+
+  echo "Scanning for $x..."
+  # FIXME: Eliminate problems with unusual characters in filenames.
+  # Currently the exec call will fail and they will be skipped.
+  find . -type f -iname "$x" -print0 -exec sh -c "$0 doAction '{}'" \;
+  echo "... end of $x"
 done;
+
 # clean up empty directories. Find can do this easily.
 # Remove Thumbs.db first because of thumbnail caching
+
 echo -n "Removing Thumbs.db files ... "
-find . -name Thumbs.db -delete
+find . -type f -name Thumbs.db -delete
 echo "done."
+
 echo -n "Cleaning up empty directories ... "
-find . -empty -delete
+find . -type d -empty -delete
 echo "done."
 
