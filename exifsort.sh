@@ -50,6 +50,12 @@ FILETYPES=("*.jpg" "*.jpeg" "*.png" "*.tif" "*.tiff" "*.gif" "*.xcf")
 #
 MOVETO=""
 #
+# Use this as filename for a directory protection marker
+# If this file is present, we skip the directory and don't process the files in it
+PROTECTED_DIR_MARKER=".exifsort_dont_delete_this"
+#
+# The following option decides whether to honour the PROTECTED_DIR_MARKER or not
+USE_PROTECTED_DIR_MARKER=TRUE
 #
 ###############################################################################
 # End of settings. If you feel the need to modify anything below here, please share
@@ -70,6 +76,17 @@ MOVETO=""
 #
 # Are we supposed to run an action? If not, skip this entire section.
 if [[ "$1" == "doAction" && "$2" != "" ]]; then
+
+  # First we check if a file with name of $PROTECTED_DIR exists
+  if [ "$USE_PROTECTED_DIR_MARKER" == "TRUE" ]; then
+    # get directory of current file and find out whether the marker file exists
+    CURRENT_DIR=`dirname "$2"`
+    # now we check whether the marker file exists
+    if [[ -e "$CURRENT_DIR/$PROTECTED_DIR_MARKER" ]]; then
+      exit
+    fi
+  fi
+
   # Check for EXIF and process it
   echo -n ": Checking EXIF... "
   # DATETIME=`identify -verbose "$2" | grep "exif:DateTime:" | awk -F' ' '{print $2" "$3}'`
@@ -84,7 +101,8 @@ if [[ "$1" == "doAction" && "$2" != "" ]]; then
       echo " Using LMDATE: $DATETIME"
     else
       echo " Moving to ./noexif/"
-      mkdir -p "${MOVETO}noexif" && mv --backup=numbered "$2" "${MOVETO}noexif"
+      mkdir -p "${MOVETO}noexif" && mv --backup=numbered -f "$2" "${MOVETO}noexif"
+	  touch "${MOVETO}noexif/${PROTECTED_DIR_MARKER}"
       exit
     fi;
   else
@@ -137,7 +155,8 @@ if [[ "$1" == "doAction" && "$2" != "" ]]; then
   DIRNAME=`date -d $UFDATE $DIRFORMAT `
 
   echo -n " Moving to ${MOVETO}${DIRNAME}${MVCMD} ... "
-  mkdir -p "${MOVETO}${DIRNAME}" && mv --backup=numbered "$2" "${MOVETO}${DIRNAME}${MVCMD}"
+  mkdir -p "${MOVETO}${DIRNAME}" && mv --backup=numbered -f "$2" "${MOVETO}${DIRNAME}${MVCMD}"
+  touch "${MOVETO}${DIRNAME}/${PROTECTED_DIR_MARKER}"
   echo "done."
   echo ""
   exit
@@ -160,11 +179,11 @@ for x in "${FILETYPES[@]}"; do
     exit 1
   fi;
 
-  echo "Scanning for $x..."
+  echo -e "Scanning for $x..."
   # FIXME: Eliminate problems with unusual characters in filenames.
   # Currently the exec call will fail and they will be skipped.
   find . -type f -iname "$x" -print0 -exec sh -c "$0 doAction '{}'" \;
-  echo "... end of $x"
+  echo -e "\n... end of $x\n"
 done;
 
 # clean up empty directories. Find can do this easily.
