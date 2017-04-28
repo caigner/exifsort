@@ -89,39 +89,43 @@ if [[ "$1" == "doAction" && "$2" != "" ]]; then
 
   # Check for EXIF and process it
   echo -n ": Checking EXIF... "
-  # DATETIME=`identify -verbose "$2" | grep "exif:DateTime:" | awk -F' ' '{print $2" "$3}'`
-  DATETIME=`exiftool -createdate "$2" | grep "Create Date" | awk -F' ' '{print $4" "$5}'`
+  DATETIME=`exiftool -v0 -createdate "$2" | grep "Create Date" | awk -F' ' '{print $4" "$5}'`
 
   if [[ "$DATETIME" == "" ]]; then
-    echo -n "not found."
-    if [[ $USE_LMDATE == "TRUE" ]]; then
-      # I am deliberately not using %Y here because of the desire to display the date/time
-      # to the user, though I could avoid a lot of post-processing by using it.
-      DATETIME=`stat --printf='%y' "$2" | awk -F. '{print $1}' | sed y/-/:/`
-      echo " Using LMDATE: $DATETIME"
-    else
-      echo " Moving to ./noexif/"
-      mkdir -p "${MOVETO}noexif" && mv --backup=numbered -f "$2" "${MOVETO}noexif"
+    echo -n "Create Date not found. Let's try GPS Date/Time... "
+	DATETIME=`exiftool -v0 -gpsdatetime "$2" | grep "GPS Date/Time" | awk -F' ' '{print $4" "$5}'`
+
+    if [[ "$DATETIME" == "" ]]; then
+       echo -n " GPS Date/Time also not found."
+          
+	   if [[ $USE_LMDATE == "TRUE" ]]; then
+          # I am deliberately not using %Y here because of the desire to display the date/time
+          # to the user, though I could avoid a lot of post-processing by using it.
+          DATETIME=`stat --printf='%y' "$2" | awk -F. '{print $1}' | sed y/-/:/`
+          echo " Using LMDATE: $DATETIME"
+       else
+          echo " Moving to ./noexif/"
+          mkdir -p "${MOVETO}noexif" && mv --backup=numbered -f "$2" "${MOVETO}noexif"
 	  touch "${MOVETO}noexif/${PROTECTED_DIR_MARKER}"
-      exit
-    fi;
+          exit
+       fi;
+	else
+	  echo "found: $DATETIME"
+	fi;	  
   else
     echo "found: $DATETIME"
   fi;
 
-  # The previous iteration of this script had a major bug which involved handling the
-  # renaming of the file when using TS_AS_FILENAME. The following sections have been
-  # rewritten to handle the action correctly as well as fix previously mangled filenames.
-  # FIXME: Collisions are not handled.
-  #
-  EDATE=`echo $DATETIME | awk -F' ' '{print $1}'`
 
   # Evaluate the file extension
   if [ "$USE_FILE_EXT" == "TRUE" ]; then
     # Get the FILE type and lowercase it for use as the extension
     EXT=`file -b "$2" | awk -F' ' '{print $1}' | tr '[:upper:]' '[:lower:]'`
     
-	if [[ "${EXT}" == "jpeg" && "${JPEG_TO_JPG}" == "TRUE" ]]; then EXT="jpg"; fi;
+	if [[ "${EXT}" == "jpeg" && "${JPEG_TO_JPG}" == "TRUE" ]]; then 
+	   EXT="jpg"
+	fi;
+
   else
     # Lowercase and use the current extension as-is
     EXT=`echo "$2" | awk -F. '{print $NF}' | tr '[:upper:]' '[:lower:]'`
@@ -130,29 +134,34 @@ if [[ "$1" == "doAction" && "$2" != "" ]]; then
   # Evaluate the file name
   if [ "$TS_AS_FILENAME" == "TRUE" ]; then
     # Get date and times from EXIF stamp
+    EDATE=`echo $DATETIME | awk -F' ' '{print $1}'`
     ETIME=`echo $DATETIME | awk -F' ' '{print $2}'`
+
+	# If time is from GPS it is UTC time, marked with a Z at the end
+	# Here we convert it to local time.
+    LOCAL_TIME=`date -d "$ETIME" "+%H:%M:%S"`
 
     # Unix Formatted DATE and TIME - For feeding to date()
     UFDATE=`echo $EDATE | sed y/:/-/`
 
     # Unix DateSTAMP
-#    UDSTAMP=`date -d "$UFDATE $ETIME" +%s`
+#    UDSTAMP=`date -d "$UFDATE $LOCAL_TIME" +%s`
 #    echo " Will rename to $UDSTAMP.$EXT"
 #    MVCMD="/$UDSTAMP.$EXT"
 
     if [ "$PRESERVE_ORIGINAL_FILENAME" == "TRUE" ]; then
       EXTENSION=${2##*.}
 	  FILENAME=`basename "$2" .$EXTENSION`
-      MVCMD="/${UFDATE}_${ETIME}_$FILENAME.${EXT}"
+      MVCMD="/${UFDATE}_${LOCAL_TIME}_$FILENAME.${EXT}"
 	else  
-      MVCMD="/${UFDATE}_${ETIME}.${EXT}"
+      MVCMD="/${UFDATE}_${LOCAL_TIME}.${EXT}"
     fi;
   fi;
 
   # DIRectory NAME for the file move
   # sed issue for y command fix provided by thomas
 #  DIRNAME=`echo $EDATE | sed y-:-/-`
-  DIRNAME=`date -d $UFDATE $DIRFORMAT `
+  DIRNAME=`date -d $UFDATE $DIRFORMAT`
 
   echo -n " Moving to ${MOVETO}${DIRNAME}${MVCMD} ... "
   mkdir -p "${MOVETO}${DIRNAME}" && mv --backup=numbered -f "$2" "${MOVETO}${DIRNAME}${MVCMD}"
